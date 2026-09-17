@@ -8,6 +8,7 @@ from src.application.ports.ad_source import AdSnapshot, AdSource
 from src.application.ports.repositories import SearchRepository, SortKey
 from src.application.ports.uow import UnitOfWork
 from src.domain.entities import SearchDocument
+from src.infrastructure.tracing.context import get_trace_id
 
 
 class FakeSearchRepository(SearchRepository):
@@ -57,7 +58,8 @@ class FakeSearchRepository(SearchRepository):
         if query is not None and query.strip():
             needle = query.lower()
             items = [
-                d for d in items
+                d
+                for d in items
                 if needle in d.title.lower() or needle in d.description.lower()
             ]
         if category is not None:
@@ -80,10 +82,13 @@ class FakeSearchRepository(SearchRepository):
         return items[offset : offset + limit], total
 
     async def suggest(self, prefix: str, limit: int) -> list[str]:
-        titles = sorted({
-            d.title for d in self._docs.values()
-            if d.title.lower().startswith(prefix.lower())
-        })
+        titles = sorted(
+            {
+                d.title
+                for d in self._docs.values()
+                if d.title.lower().startswith(prefix.lower())
+            }
+        )
         return titles[:limit]
 
     def snapshot(self) -> dict[int, SearchDocument]:
@@ -94,9 +99,11 @@ class FakeAdSource(AdSource):
     def __init__(self, snapshots: dict[int, AdSnapshot] | None = None) -> None:
         self._snapshots: dict[int, AdSnapshot] = snapshots or {}
         self.calls: list[int] = []
+        self.trace_ids_seen: list[str | None] = []
 
     async def get(self, ad_id: int) -> AdSnapshot | None:
         self.calls.append(ad_id)
+        self.trace_ids_seen.append(get_trace_id())
         return self._snapshots.get(ad_id)
 
     def set(self, snapshot: AdSnapshot) -> None:
